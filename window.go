@@ -14,6 +14,8 @@ type Window interface {
 	CreateTab() (Tab, error)
 	ListTabs() ([]Tab, error)
 	Activate() error
+	GetVariable(name string) (string, error)
+	SetVariable(name, value string) error
 }
 
 type window struct {
@@ -93,4 +95,48 @@ func (w *window) Activate() error {
 		}},
 	})
 	return err
+}
+
+func (w *window) GetVariable(name string) (string, error) {
+	resp, err := w.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_WindowId{WindowId: w.id},
+				Get:   []string{name},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("error getting variable %q for window %q: %w", name, w.id, err)
+	}
+	varResp := resp.GetVariableResponse()
+	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
+		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+	}
+	values := varResp.GetValues()
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
+}
+
+func (w *window) SetVariable(name, value string) error {
+	resp, err := w.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_WindowId{WindowId: w.id},
+				Set: []*api.VariableRequest_Set{{
+					Name:  &name,
+					Value: &value,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error setting variable %q for window %q: %w", name, w.id, err)
+	}
+	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
+		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)
+	}
+	return nil
 }

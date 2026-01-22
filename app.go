@@ -16,6 +16,8 @@ type App interface {
 	ListWindows() ([]Window, error)
 	SelectMenuItem(item string) error
 	Activate(raiseAllWindows, ignoreOtherApps bool) error
+	GetVariable(name string) (string, error)
+	SetVariable(name, value string) error
 }
 
 // NewApp establishes a connection
@@ -115,6 +117,50 @@ func (a *app) SelectMenuItem(item string) error {
 	}
 	if resp.GetMenuItemResponse().GetStatus() != api.MenuItemResponse_OK {
 		return fmt.Errorf("menu item %q returned unexpected status: %q", item, resp.GetMenuItemResponse().GetStatus().String())
+	}
+	return nil
+}
+
+func (a *app) GetVariable(name string) (string, error) {
+	resp, err := a.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_App{App: true},
+				Get:   []string{name},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("error getting variable %q for app: %w", name, err)
+	}
+	varResp := resp.GetVariableResponse()
+	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
+		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+	}
+	values := varResp.GetValues()
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
+}
+
+func (a *app) SetVariable(name, value string) error {
+	resp, err := a.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_App{App: true},
+				Set: []*api.VariableRequest_Set{{
+					Name:  &name,
+					Value: &value,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error setting variable %q for app: %w", name, err)
+	}
+	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
+		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)
 	}
 	return nil
 }

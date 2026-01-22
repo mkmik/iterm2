@@ -11,6 +11,8 @@ import (
 type Tab interface {
 	SetTitle(string) error
 	ListSessions() ([]Session, error)
+	GetVariable(name string) (string, error)
+	SetVariable(name, value string) error
 }
 
 type tab struct {
@@ -66,4 +68,48 @@ func (t *tab) ListSessions() ([]Session, error) {
 		}
 	}
 	return list, nil
+}
+
+func (t *tab) GetVariable(name string) (string, error) {
+	resp, err := t.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_TabId{TabId: t.id},
+				Get:   []string{name},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("error getting variable %q for tab %q: %w", name, t.id, err)
+	}
+	varResp := resp.GetVariableResponse()
+	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
+		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+	}
+	values := varResp.GetValues()
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
+}
+
+func (t *tab) SetVariable(name, value string) error {
+	resp, err := t.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_TabId{TabId: t.id},
+				Set: []*api.VariableRequest_Set{{
+					Name:  &name,
+					Value: &value,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error setting variable %q for tab %q: %w", name, t.id, err)
+	}
+	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
+		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)
+	}
+	return nil
 }

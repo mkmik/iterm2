@@ -14,6 +14,8 @@ type Session interface {
 	Activate(selectTab, orderWindowFront bool) error
 	SplitPane(opts SplitPaneOptions) (Session, error)
 	GetSessionID() string
+	GetVariable(name string) (string, error)
+	SetVariable(name, value string) error
 }
 
 // SplitPaneOptions for customizing the new pane session.
@@ -94,4 +96,48 @@ func (s *session) SplitPane(opts SplitPaneOptions) (Session, error) {
 
 func (s *session) GetSessionID() string {
 	return s.id
+}
+
+func (s *session) GetVariable(name string) (string, error) {
+	resp, err := s.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_SessionId{SessionId: s.id},
+				Get:   []string{name},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("error getting variable %q for session %q: %w", name, s.id, err)
+	}
+	varResp := resp.GetVariableResponse()
+	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
+		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+	}
+	values := varResp.GetValues()
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
+}
+
+func (s *session) SetVariable(name, value string) error {
+	resp, err := s.c.Call(&api.ClientOriginatedMessage{
+		Submessage: &api.ClientOriginatedMessage_VariableRequest{
+			VariableRequest: &api.VariableRequest{
+				Scope: &api.VariableRequest_SessionId{SessionId: s.id},
+				Set: []*api.VariableRequest_Set{{
+					Name:  &name,
+					Value: &value,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error setting variable %q for session %q: %w", name, s.id, err)
+	}
+	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
+		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)
+	}
+	return nil
 }
