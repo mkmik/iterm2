@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"golang.org/x/sync/errgroup"
-	"marwan.io/iterm2"
+	"github.com/mkmik/iterm2"
 )
 
 // WindowSpec specifies a window configuration.

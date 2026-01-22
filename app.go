@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"marwan.io/iterm2/api"
-	"marwan.io/iterm2/client"
+	"github.com/mkmik/iterm2/api"
+	"github.com/mkmik/iterm2/client"
 )
 
 // App represents an open iTerm2 application

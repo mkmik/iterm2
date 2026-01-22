@@ -4,7 +4,7 @@
 
 ### Install
 
-go get marwan.io/iterm2
+go get github.com/mkmik/iterm2
 
 ### Usage
 
@@ -30,7 +30,7 @@ func main() {
 ### Installing the plugin into iTerm2
 
 1. Install your program into your local PATH (for example running `go install`)
-2. `go get marwan.io/iterm2/cmd/goiterm`
+2. `go get github.com/mkmik/iterm2/cmd/goiterm`
 3. `goiterm install <bin>`
 4. From any iTerm window run "cmd+shift+o" and look for `<bin>.py`.
 

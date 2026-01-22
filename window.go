@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"marwan.io/iterm2/api"
-	"marwan.io/iterm2/client"
+	"github.com/mkmik/iterm2/api"
+	"github.com/mkmik/iterm2/client"
 )
 
 // Window represents an iTerm2 Window
