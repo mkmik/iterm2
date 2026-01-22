@@ -1,6 +1,7 @@
 package iterm2
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -14,8 +15,8 @@ type Window interface {
 	CreateTab() (Tab, error)
 	ListTabs() ([]Tab, error)
 	Activate() error
-	GetVariable(name string) (string, error)
-	SetVariable(name, value string) error
+	GetVariable(name string, value any) error
+	SetVariable(name string, value any) error
 }
 
 type window struct {
@@ -97,7 +98,7 @@ func (w *window) Activate() error {
 	return err
 }
 
-func (w *window) GetVariable(name string) (string, error) {
+func (w *window) GetVariable(name string, value any) error {
 	resp, err := w.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
@@ -107,33 +108,42 @@ func (w *window) GetVariable(name string) (string, error) {
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("error getting variable %q for window %q: %w", name, w.id, err)
+		return fmt.Errorf("error getting variable %q: %w", name, err)
 	}
 	varResp := resp.GetVariableResponse()
 	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
-		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+		return fmt.Errorf("unexpected status getting variable %q: %s", name, status)
 	}
 	values := varResp.GetValues()
-	if len(values) == 0 {
-		return "", nil
+	if len(values) == 0 || values[0] == "null" {
+		return nil
 	}
-	return values[0], nil
+	if err := json.Unmarshal([]byte(values[0]), value); err != nil {
+		return fmt.Errorf("error unmarshaling variable %q: %w", name, err)
+	}
+	return nil
 }
 
-func (w *window) SetVariable(name, value string) error {
+func (w *window) SetVariable(name string, value any) error {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("error marshaling value for variable %q: %w", name, err)
+	}
+	jsonStr := string(jsonBytes)
+
 	resp, err := w.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
 				Scope: &api.VariableRequest_WindowId{WindowId: w.id},
 				Set: []*api.VariableRequest_Set{{
 					Name:  &name,
-					Value: &value,
+					Value: &jsonStr,
 				}},
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error setting variable %q for window %q: %w", name, w.id, err)
+		return fmt.Errorf("error setting variable %q: %w", name, err)
 	}
 	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
 		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)

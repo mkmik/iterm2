@@ -1,6 +1,7 @@
 package iterm2
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/mkmik/iterm2/api"
@@ -11,8 +12,8 @@ import (
 type Tab interface {
 	SetTitle(string) error
 	ListSessions() ([]Session, error)
-	GetVariable(name string) (string, error)
-	SetVariable(name, value string) error
+	GetVariable(name string, value any) error
+	SetVariable(name string, value any) error
 }
 
 type tab struct {
@@ -70,7 +71,7 @@ func (t *tab) ListSessions() ([]Session, error) {
 	return list, nil
 }
 
-func (t *tab) GetVariable(name string) (string, error) {
+func (t *tab) GetVariable(name string, value any) error {
 	resp, err := t.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
@@ -80,33 +81,42 @@ func (t *tab) GetVariable(name string) (string, error) {
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("error getting variable %q for tab %q: %w", name, t.id, err)
+		return fmt.Errorf("error getting variable %q: %w", name, err)
 	}
 	varResp := resp.GetVariableResponse()
 	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
-		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+		return fmt.Errorf("unexpected status getting variable %q: %s", name, status)
 	}
 	values := varResp.GetValues()
-	if len(values) == 0 {
-		return "", nil
+	if len(values) == 0 || values[0] == "null" {
+		return nil
 	}
-	return values[0], nil
+	if err := json.Unmarshal([]byte(values[0]), value); err != nil {
+		return fmt.Errorf("error unmarshaling variable %q: %w", name, err)
+	}
+	return nil
 }
 
-func (t *tab) SetVariable(name, value string) error {
+func (t *tab) SetVariable(name string, value any) error {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("error marshaling value for variable %q: %w", name, err)
+	}
+	jsonStr := string(jsonBytes)
+
 	resp, err := t.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
 				Scope: &api.VariableRequest_TabId{TabId: t.id},
 				Set: []*api.VariableRequest_Set{{
 					Name:  &name,
-					Value: &value,
+					Value: &jsonStr,
 				}},
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error setting variable %q for tab %q: %w", name, t.id, err)
+		return fmt.Errorf("error setting variable %q: %w", name, err)
 	}
 	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
 		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)

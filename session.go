@@ -1,6 +1,7 @@
 package iterm2
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/mkmik/iterm2/api"
@@ -14,8 +15,8 @@ type Session interface {
 	Activate(selectTab, orderWindowFront bool) error
 	SplitPane(opts SplitPaneOptions) (Session, error)
 	GetSessionID() string
-	GetVariable(name string) (string, error)
-	SetVariable(name, value string) error
+	GetVariable(name string, value any) error
+	SetVariable(name string, value any) error
 }
 
 // SplitPaneOptions for customizing the new pane session.
@@ -98,7 +99,7 @@ func (s *session) GetSessionID() string {
 	return s.id
 }
 
-func (s *session) GetVariable(name string) (string, error) {
+func (s *session) GetVariable(name string, value any) error {
 	resp, err := s.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
@@ -108,33 +109,42 @@ func (s *session) GetVariable(name string) (string, error) {
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("error getting variable %q for session %q: %w", name, s.id, err)
+		return fmt.Errorf("error getting variable %q: %w", name, err)
 	}
 	varResp := resp.GetVariableResponse()
 	if status := varResp.GetStatus(); status != api.VariableResponse_OK {
-		return "", fmt.Errorf("unexpected status getting variable %q: %s", name, status)
+		return fmt.Errorf("unexpected status getting variable %q: %s", name, status)
 	}
 	values := varResp.GetValues()
-	if len(values) == 0 {
-		return "", nil
+	if len(values) == 0 || values[0] == "null" {
+		return nil
 	}
-	return values[0], nil
+	if err := json.Unmarshal([]byte(values[0]), value); err != nil {
+		return fmt.Errorf("error unmarshaling variable %q: %w", name, err)
+	}
+	return nil
 }
 
-func (s *session) SetVariable(name, value string) error {
+func (s *session) SetVariable(name string, value any) error {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("error marshaling value for variable %q: %w", name, err)
+	}
+	jsonStr := string(jsonBytes)
+
 	resp, err := s.c.Call(&api.ClientOriginatedMessage{
 		Submessage: &api.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &api.VariableRequest{
 				Scope: &api.VariableRequest_SessionId{SessionId: s.id},
 				Set: []*api.VariableRequest_Set{{
 					Name:  &name,
-					Value: &value,
+					Value: &jsonStr,
 				}},
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error setting variable %q for session %q: %w", name, s.id, err)
+		return fmt.Errorf("error setting variable %q: %w", name, err)
 	}
 	if status := resp.GetVariableResponse().GetStatus(); status != api.VariableResponse_OK {
 		return fmt.Errorf("unexpected status setting variable %q: %s", name, status)
